@@ -659,20 +659,6 @@ absl::Status GpuDriver::AsynchronousMemsetUint8(Context* context,
                   "Failed to enqueue async memset operation");
 }
 
-absl::Status GpuDriver::AsynchronousMemsetUint32(Context* context,
-                                                 hipDeviceptr_t location,
-                                                 uint32_t value,
-                                                 size_t uint32_count,
-                                                 GpuStreamHandle stream) {
-  ScopedActivateContext activation{context};
-  void* pointer = absl::bit_cast<void*>(location);
-  TF_RETURN_IF_ERROR(
-      ToStatus(wrap::hipMemsetD32Async(pointer, value, uint32_count, stream),
-               "Failed to enqueue async memset operation"));
-  VLOG(2) << "successfully enqueued async memset operation";
-  return absl::OkStatus();
-}
-
 absl::Status GpuDriver::AddStreamCallback(Context* context,
                                           GpuStreamHandle stream,
                                           StreamCallback callback, void* data) {
@@ -785,30 +771,6 @@ void GpuDriver::HostDeallocate(Context* context, void* location) {
   }
 }
 
-absl::Status GpuDriver::DestroyEvent(Context* context, GpuEventHandle* event) {
-  if (*event == nullptr) {
-    return absl::InvalidArgumentError("input event cannot be null");
-  }
-
-  ScopedActivateContext activated{context};
-  hipError_t res = wrap::hipEventDestroy(*event);
-  *event = nullptr;
-
-  switch (res) {
-    case hipSuccess:
-      return absl::OkStatus();
-    case hipErrorDeinitialized:
-    case hipErrorNotInitialized:
-      return absl::FailedPreconditionError(
-          absl::StrFormat("error destroying ROCM event in device %d: %s",
-                          context->device_ordinal(), ToString(res).c_str()));
-    default:
-      return absl::InternalError(
-          absl::StrFormat("error destroying ROCM event in device %d: %s",
-                          context->device_ordinal(), ToString(res).c_str()));
-  }
-}
-
 absl::Status GpuDriver::SynchronizeStream(Context* context,
                                           GpuStreamHandle stream) {
   ScopedActivateContext activated{context};
@@ -907,34 +869,6 @@ absl::Status GpuDriver::AsynchronousMemcpyD2D(Context* context,
           << absl::bit_cast<void*>(gpu_dst) << " on stream " << stream
           << " device: " << context->device_ordinal();
   return absl::OkStatus();
-}
-
-absl::Status GpuDriver::InitEvent(Context* context, GpuEventHandle* event,
-                                  EventFlags flags) {
-  int hipflags;
-  switch (flags) {
-    case EventFlags::kDefault:
-      hipflags = hipEventDefault;
-      break;
-    case EventFlags::kDisableTiming:
-      hipflags = hipEventDisableTiming | hipEventReleaseToSystem;
-      break;
-    default:
-      LOG(FATAL) << "impossible event flags: " << int(hipflags);
-  }
-
-  ScopedActivateContext activated{context};
-  hipError_t res = wrap::hipEventCreateWithFlags(event, hipflags);
-
-  if (res == hipSuccess) {
-    return absl::OkStatus();
-  } else if (res == hipErrorMemoryAllocation) {
-    return absl::ResourceExhaustedError(
-        "could not create ROCM event: out of device memory");
-  } else {
-    return absl::FailedPreconditionError(
-        absl::StrCat("could not create ROCM event: ", ToString(res)));
-  }
 }
 
 int GpuDriver::GetDeviceCount() {

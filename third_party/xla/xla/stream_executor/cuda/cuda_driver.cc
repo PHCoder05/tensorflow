@@ -818,16 +818,6 @@ absl::Status GpuDriver::AsynchronousMemsetUint8(Context* context,
                         "Failed to enqueue async memset operation");
 }
 
-absl::Status GpuDriver::AsynchronousMemsetUint32(Context* context,
-                                                 CUdeviceptr location,
-                                                 uint32_t value,
-                                                 size_t uint32_count,
-                                                 CUstream stream) {
-  ScopedActivateContext activation(context);
-  return cuda::ToStatus(cuMemsetD32Async(location, value, uint32_count, stream),
-                        "Failed to enqueue async memset operation");
-}
-
 absl::Status GpuDriver::AddStreamCallback(Context* context, CUstream stream,
                                           StreamCallback callback, void* data) {
   // Note: flags param is required to be zero according to CUDA 6.0.
@@ -965,14 +955,6 @@ bool GpuDriver::HostUnregister(Context* context, void* location) {
   return true;
 }
 
-absl::Status GpuDriver::DestroyEvent(Context* context, CUevent* event) {
-  if (*event == nullptr) {
-    return absl::InvalidArgumentError("input event cannot be null");
-  }
-
-  ScopedActivateContext activated{context};
-  return cuda::ToStatus(cuEventDestroy(*event), "Error destroying CUDA event");
-}
 
 absl::Status GpuDriver::SynchronizeStream(Context* context, CUstream stream) {
   ScopedActivateContext activated{context};
@@ -1075,24 +1057,6 @@ absl::Status GpuDriver::AsynchronousMemcpyD2D(Context* context,
           << " from " << absl::bit_cast<void*>(gpu_src) << " to "
           << absl::bit_cast<void*>(gpu_dst) << " on stream " << stream;
   return absl::OkStatus();
-}
-
-absl::Status GpuDriver::InitEvent(Context* context, CUevent* result,
-                                  EventFlags flags) {
-  int cuflags;
-  switch (flags) {
-    case EventFlags::kDefault:
-      cuflags = CU_EVENT_DEFAULT;
-      break;
-    case EventFlags::kDisableTiming:
-      cuflags = CU_EVENT_DISABLE_TIMING;
-      break;
-    default:
-      LOG(FATAL) << "impossible event flags: " << int(flags);
-  }
-
-  ScopedActivateContext activated{context};
-  return cuda::ToStatus(cuEventCreate(result, cuflags));
 }
 
 int GpuDriver::GetDeviceCount() {
