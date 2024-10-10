@@ -15,23 +15,27 @@ limitations under the License.
 
 #include "xla/stream_executor/rocm/rocm_stream.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
 #include <variant>
 
+#include "absl/base/casts.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "rocm/include/hip/hip_runtime.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/gpu/context.h"
-#include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
+#include "xla/stream_executor/rocm/rocm_event.h"
 #include "xla/stream_executor/rocm/rocm_status.h"
 #include "xla/stream_executor/stream.h"
 #include "tsl/platform/errors.h"
@@ -105,7 +109,7 @@ absl::Status WaitStreamOnEvent(Context* context, hipStream_t stream,
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<RocmStream>> RocmStream::Create(
-    GpuExecutor* executor, std::unique_ptr<GpuEvent> completed_event,
+    GpuExecutor* executor,
     std::optional<std::variant<StreamPriority, int>> priority) {
   int stream_priority = [&]() {
     if (priority.has_value() && std::holds_alternative<int>(priority.value())) {
@@ -118,6 +122,10 @@ absl::StatusOr<std::unique_ptr<RocmStream>> RocmStream::Create(
   TF_ASSIGN_OR_RETURN(auto stream_handle,
                       CreateStream(executor->gpu_context(), stream_priority));
 
+  TF_ASSIGN_OR_RETURN(auto completed_event,
+                      RocmEvent::Create(executor->gpu_context(),
+                                        /*allow_timing=*/false));
+
   return std::unique_ptr<RocmStream>(new RocmStream(
       executor, std::move(completed_event), priority, stream_handle));
 }
@@ -125,21 +133,43 @@ absl::StatusOr<std::unique_ptr<RocmStream>> RocmStream::Create(
 absl::Status RocmStream::WaitFor(Stream* other) {
   RocmStream* other_stream = static_cast<RocmStream*>(other);
 
-  GpuEvent* other_completed_event = other_stream->completed_event();
-  TF_RETURN_IF_ERROR(other_stream->RecordEvent(other_completed_event));
+  TF_RETURN_IF_ERROR(other_stream->RecordCompletedEvent());
 
   return WaitStreamOnEvent(executor_->gpu_context(), gpu_stream(),
-                           other_completed_event->gpu_event());
+                           other_stream->completed_event_.GetHandle());
 }
 
 absl::Status RocmStream::RecordEvent(Event* event) {
   return stream_executor::gpu::RecordEvent(
-      executor_->gpu_context(), static_cast<GpuEvent*>(event)->gpu_event(),
+      executor_->gpu_context(), static_cast<RocmEvent*>(event)->GetHandle(),
       gpu_stream());
 }
 
 absl::Status RocmStream::WaitFor(Event* event) {
   return WaitStreamOnEvent(executor_->gpu_context(), gpu_stream(),
-                           static_cast<GpuEvent*>(event)->gpu_event());
+                           static_cast<RocmEvent*>(event)->GetHandle());
 }
+
+absl::Status RocmStream::RecordCompletedEvent() {
+  return RecordEvent(&completed_event_);
+}
+
+RocmStream::~RocmStream() {
+  BlockHostUntilDone().IgnoreError();
+  executor_->DeallocateStream(this);
+}
+
+absl::Status RocmStream::Memset32(DeviceMemoryBase* location, uint32_t pattern,
+                                  uint64_t size) {
+  if (absl::bit_cast<uintptr_t>(location->opaque()) % 4 != 0) {
+    return absl::InvalidArgumentError("location must be 4 byte aligned.");
+  }
+  if (size % 4 != 0) {
+    return absl::InvalidArgumentError("size must be a multiple of 4 bytes.");
+  }
+  return ToStatus(wrap::hipMemsetD32Async(location->opaque(), pattern, size / 4,
+                                          gpu_stream()),
+                  "Failed to memset memory");
+}
+
 }  // namespace stream_executor::gpu
