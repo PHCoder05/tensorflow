@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
+#include "xla/hlo/translate/portable_api.h"
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/host/host_platform_id.h"
@@ -99,7 +100,9 @@ static absl::StatusOr<std::string> BuildHLOString(
   switch (stage) {
     case IrExportStage::HLO:
     case IrExportStage::HLO_NO_METADATA:
-    case IrExportStage::HLO_SERIALIZED: {
+    case IrExportStage::HLO_SERIALIZED:
+    case IrExportStage::STABLEHLO:
+    case IrExportStage::STABLEHLO_SERIALIZED: {
       TF_ASSIGN_OR_RETURN(xla::ProgramShape program_shape,
                           result.computation->GetProgramShape());
       xla::HloModuleConfig config(program_shape);
@@ -111,12 +114,22 @@ static absl::StatusOr<std::string> BuildHLOString(
       if (stage == IrExportStage::HLO_NO_METADATA) {
         opts.set_print_metadata(false);
       }
-
+      if (stage == IrExportStage::STABLEHLO_SERIALIZED) {
+        TF_ASSIGN_OR_RETURN(
+            std::string stablehlo,
+            xla::ConvertHloToStablehlo(*new_module, /*emit_bytecode=*/true));
+        return stablehlo;
+      }
+      if (stage == IrExportStage::STABLEHLO) {
+        TF_ASSIGN_OR_RETURN(
+            std::string stablehlo,
+            xla::ConvertHloToStablehlo(*new_module, /*emit_bytecode=*/false));
+        return stablehlo;
+      }
       if (stage == IrExportStage::HLO_SERIALIZED) {
         return new_module->ToProto().SerializeAsString();
-      } else {
-        return new_module->ToString(opts);
       }
+      return new_module->ToString(opts);
     }
     case IrExportStage::OPTIMIZED_HLO:
     case IrExportStage::OPTIMIZED_HLO_SERIALIZED: {
@@ -223,7 +236,9 @@ absl::Status ValidateGetCompilerIrTfrtTpu(absl::string_view device_type,
   auto is_tfrt_tpu_supported_stage = [](IrExportStage stage) {
     return stage == IrExportStage::HLO ||
            stage == IrExportStage::HLO_NO_METADATA ||
-           stage == IrExportStage::HLO_SERIALIZED;
+           stage == IrExportStage::HLO_SERIALIZED ||
+           stage == IrExportStage::STABLEHLO ||
+           stage == IrExportStage::STABLEHLO_SERIALIZED;
   };
   // TODO(b/238830423): support GetCompilerIr on TFRT TPU device for stages
   // that requires compilation from HLO to executable.

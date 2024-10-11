@@ -465,6 +465,10 @@ static py::bytes TFE_GetCompilerIr(py::handle& ctx,
       return IrExportStage::HLO_NO_METADATA;
     } else if (s_stage == "hlo_serialized") {
       return IrExportStage::HLO_SERIALIZED;
+    } else if (s_stage == "stablehlo") {
+      return IrExportStage::STABLEHLO;
+    } else if (s_stage == "stablehlo_serialized") {
+      return IrExportStage::STABLEHLO_SERIALIZED;
     } else if (s_stage == "optimized_hlo") {
       return IrExportStage::OPTIMIZED_HLO;
     } else if (s_stage == "optimized_hlo_serialized") {

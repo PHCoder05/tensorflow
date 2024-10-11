@@ -118,6 +118,7 @@ def from_concrete_function(
     )
     if stage in (
         "hlo_serialized",
+        "stablehlo_serialized",
         "optimized_hlo_serialized",
         "optimized_hlo_proto_serialized",
     ):

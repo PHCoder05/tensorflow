@@ -1029,8 +1029,12 @@ class Function(core.PolymorphicFunction, trackable.Trackable):
           captured_inputs=concrete_fn.captured_inputs,
           stage=stage,
       )
-      if stage in ("hlo_serialized", "optimized_hlo_serialized",
-                   "optimized_hlo_proto_serialized"):
+      if stage in (
+          "hlo_serialized",
+          "stablehlo_serialized",
+          "optimized_hlo_serialized",
+          "optimized_hlo_proto_serialized",
+      ):
         return res_bytes
       else:
         return res_bytes.decode("utf-8")
