@@ -171,7 +171,7 @@ Learn more about the
 * [Edx](https://www.edx.org/search?q=TensorFlow)
 * [Linkedin Learning](https://www.linkedin.com/learning/topics/tensorflow)
 * [Youtube](https://www.youtube.com/c/TensorFlow)
-
+  
 ## License
 
 [Apache License 2.0](LICENSE)
