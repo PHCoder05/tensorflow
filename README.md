@@ -169,6 +169,8 @@ Learn more about the
 * [Coursera](https://www.coursera.org/search?query=TensorFlow)
 * [Udacity](https://www.udacity.com/courses/all?search=TensorFlow)
 * [Edx](https://www.edx.org/search?q=TensorFlow)
+* [Linkedin Learning](https://www.linkedin.com/learning/topics/tensorflow)
+* [Youtube](https://www.youtube.com/c/TensorFlow)
 
 ## License
 
